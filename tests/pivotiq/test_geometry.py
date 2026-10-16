@@ -1,11 +1,10 @@
 """Unit tests for pivotiq.geometry — no GPU, no weights required."""
 
-import math
 
+import matplotlib
 import numpy as np
 import pytest
 
-import matplotlib
 matplotlib.use("Agg")  # non-interactive backend; must be set before pyplot import
 
 import matplotlib.pyplot as plt
@@ -188,7 +187,7 @@ class TestDrawPitch:
         plt.close(fig)
 
     def test_custom_figsize(self):
-        fig, ax = draw_pitch(figsize=(8.0, 4.0))
+        fig, _ax = draw_pitch(figsize=(8.0, 4.0))
         w, h = fig.get_size_inches()
         assert w == pytest.approx(8.0)
         assert h == pytest.approx(4.0)
@@ -204,11 +203,11 @@ class TestDrawPitch:
     def test_shot_map_no_crash(self):
         shots = [(5.0, 10.0), (38.0, 9.0), (30.0, 12.0)]
         outcomes = ["goal", "on_target", "blocked"]
-        fig, ax = draw_shot_map(shots, outcomes)
+        fig, _ax = draw_shot_map(shots, outcomes)
         assert fig is not None
         plt.close(fig)
 
     def test_shot_map_empty(self):
-        fig, ax = draw_shot_map([], [])
+        fig, _ax = draw_shot_map([], [])
         assert fig is not None
         plt.close(fig)

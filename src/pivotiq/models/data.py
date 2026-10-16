@@ -12,7 +12,6 @@ from typing import Optional
 import numpy as np
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-
 # ---------------------------------------------------------------------------
 # Primitives
 # ---------------------------------------------------------------------------
@@ -27,7 +26,7 @@ class BBox(BaseModel):
     y2: float
 
     @model_validator(mode="after")
-    def _check_ordering(self) -> "BBox":
+    def _check_ordering(self) -> BBox:
         if self.x2 < self.x1 or self.y2 < self.y1:
             raise ValueError("x2/y2 must be >= x1/y1")
         return self
@@ -119,6 +118,17 @@ class BallState(BaseModel):
 # Registration / homography
 # ---------------------------------------------------------------------------
 
+_MIN_ABS_DET = 1e-12
+_MIN_ABS_W = 1e-9
+
+
+def _project(M: np.ndarray, x: float, y: float) -> tuple[float, float]:
+    """Apply a 3×3 projective map to one point; raise if it maps to infinity (w ~ 0)."""
+    v = M @ np.array([x, y, 1.0])
+    if not np.isfinite(v).all() or abs(v[2]) < _MIN_ABS_W:
+        raise ValueError(f"point ({x}, {y}) maps to infinity (homogeneous w ~ 0)")
+    return float(v[0] / v[2]), float(v[1] / v[2])
+
 
 class HomographySource(str, Enum):
     KEYPOINT = "keypoint"
@@ -141,6 +151,13 @@ class Homography(BaseModel):
     def _check_shape(cls, v: list[list[float]]) -> list[list[float]]:
         if len(v) != 3 or any(len(row) != 3 for row in v):
             raise ValueError("H must be a 3×3 matrix")
+        arr = np.asarray(v, dtype=np.float64)
+        if not np.all(np.isfinite(arr)):
+            raise ValueError("H must contain only finite numbers")
+        # A singular H collapses the image plane onto a line/point: it cannot be a valid mapping
+        # and pitch_to_pixel() would need its inverse.
+        if abs(np.linalg.det(arr)) < _MIN_ABS_DET:
+            raise ValueError("H is singular (determinant ~ 0)")
         return v
 
     @classmethod
@@ -150,7 +167,7 @@ class Homography(BaseModel):
         H: np.ndarray,
         reprojection_error: Optional[float] = None,
         source: HomographySource = HomographySource.KEYPOINT,
-    ) -> "Homography":
+    ) -> Homography:
         if H.shape != (3, 3):
             raise ValueError(f"Expected (3,3) array, got {H.shape}")
         return cls(
@@ -165,15 +182,11 @@ class Homography(BaseModel):
 
     def pixel_to_pitch(self, px: float, py: float) -> tuple[float, float]:
         """Map one pixel point to pitch coordinates."""
-        H = self.to_numpy()
-        v = H @ np.array([px, py, 1.0])
-        return float(v[0] / v[2]), float(v[1] / v[2])
+        return _project(self.to_numpy(), px, py)
 
     def pitch_to_pixel(self, mx: float, my: float) -> tuple[float, float]:
         """Map one pitch point to pixel coordinates (uses inverse H)."""
-        H_inv = np.linalg.inv(self.to_numpy())
-        v = H_inv @ np.array([mx, my, 1.0])
-        return float(v[0] / v[2]), float(v[1] / v[2])
+        return _project(np.linalg.inv(self.to_numpy()), mx, my)
 
 
 # ---------------------------------------------------------------------------

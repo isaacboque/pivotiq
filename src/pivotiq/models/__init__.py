@@ -1,8 +1,8 @@
 """Pydantic data contracts shared across all PivotIQ modules."""
 
 from .data import (
-    BBox,
     BallState,
+    BBox,
     Detection,
     Event,
     EventType,
