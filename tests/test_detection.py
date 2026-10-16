@@ -4,7 +4,32 @@ import numpy as np
 import pytest
 
 from futsal_analytics.board import TacticalBoard
+from futsal_analytics.config import Config
 from futsal_analytics.detection import BallTracker, TeamClassifier, resolve_device
+
+
+class _Dets:
+    """Minimal stand-in for supervision.Detections: just `xyxy` and `len`."""
+
+    def __init__(self, xyxy):
+        self.xyxy = np.asarray(xyxy, dtype=np.float32)
+
+    def __len__(self):
+        return len(self.xyxy)
+
+
+def _kit_frame(kits_bgr):
+    """One 40x100 'player' per kit colour, side by side on a green pitch."""
+    n = len(kits_bgr)
+    frame = np.zeros((120, 50 * n + 10, 3), dtype=np.uint8)
+    frame[:] = (34, 139, 34)
+    boxes = []
+    for i, bgr in enumerate(kits_bgr):
+        x1 = 5 + 50 * i
+        frame[10:110, x1 : x1 + 40] = bgr
+        boxes.append([x1, 10, x1 + 40, 110])
+    return frame, _Dets(boxes)
+
 
 # ---------------------------------------------------------------------------
 # BallTracker
@@ -64,18 +89,63 @@ class TestBallTracker:
 
 
 class TestTeamClassifierColorFeatures:
-    def test_returns_three_element_vector(self, synthetic_frame):
+    def test_returns_four_element_vector(self, synthetic_frame):
+        # [sin_H, cos_H, S, V]: hue is circular, so it takes two components.
         tc = TeamClassifier()
         bbox = np.array([10, 10, 60, 80], dtype=np.float32)
         features = tc.get_jersey_color_features(synthetic_frame, bbox)
-        assert features.shape == (3,)
+        assert features.shape == (4,)
         assert features.dtype == np.float32
 
-    def test_empty_crop_returns_zeros(self, synthetic_frame):
+    def test_saturation_and_value_are_scaled_to_unit_range(self):
+        frame = np.zeros((100, 100, 3), dtype=np.uint8)
+        frame[:] = (0, 0, 255)  # pure red in BGR
+        features = TeamClassifier().get_jersey_color_features(
+            frame, np.array([0, 0, 90, 90], dtype=np.float32)
+        )
+        assert np.all(np.abs(features) <= 1.0 + 1e-6)
+        assert features[2] == pytest.approx(1.0) and features[3] == pytest.approx(1.0)
+
+    def test_red_hue_wraparound_is_not_green(self):
+        """Red sits at H~0 and H~180; (sin, cos) must stay near angle 0, not drift to 90 (green)."""
+        frame = np.zeros((100, 100, 3), dtype=np.uint8)
+        frame[:, :50] = (0, 0, 255)  # H = 0
+        frame[:, 50:] = (20, 0, 255)  # H just under 180
+        features = TeamClassifier().get_jersey_color_features(
+            frame, np.array([0, 0, 100, 100], dtype=np.float32)
+        )
+        assert features[1] > 0.9  # cos(H) ~ 1: red, not the cos ~ -1 a plain mean of H would give
+
+    def test_empty_crop_is_treated_as_black(self, synthetic_frame):
+        # _safe_crop never returns a zero-size array: a degenerate box becomes a 1x1 black pixel,
+        # i.e. hue angle 0 -> (sin, cos) = (0, 1), and S = V = 0.
         tc = TeamClassifier()
         bbox = np.array([10, 10, 10, 10], dtype=np.float32)
         features = tc.get_jersey_color_features(synthetic_frame, bbox)
-        np.testing.assert_array_equal(features, [0, 0, 0])
+        np.testing.assert_array_equal(features, [0, 1, 0, 0])
+
+    def test_train_teams_fits_distinct_kits_and_separates_them(self):
+        frame, dets = _kit_frame([(0, 0, 255)] * 5 + [(255, 0, 0)] * 5 + [(0, 255, 255)] * 2)
+        tc = TeamClassifier()
+        assert tc.train_teams(frame, dets, Config()) is True
+        red = {tc.predict_team(frame, b) for b in dets.xyxy[:5]}
+        blue = {tc.predict_team(frame, b) for b in dets.xyxy[5:10]}
+        assert len(red) == 1 and len(blue) == 1 and red != blue
+        assert -1 not in red | blue  # the two big groups are teams; the small one is the referee
+
+    def test_train_teams_refuses_identical_kits(self):
+        frame, dets = _kit_frame([(0, 0, 255)] * 8)
+        tc = TeamClassifier()
+        assert tc.train_teams(frame, dets, Config()) is False
+        assert tc.trained is False
+
+    def test_train_teams_works_for_white_vs_black_kits(self):
+        frame, dets = _kit_frame([(255, 255, 255)] * 5 + [(10, 10, 10)] * 5 + [(0, 0, 255)] * 2)
+        assert TeamClassifier().train_teams(frame, dets, Config()) is True
+
+    def test_train_teams_needs_enough_players(self):
+        frame, dets = _kit_frame([(0, 0, 255)] * 2 + [(255, 0, 0)] * 2)
+        assert TeamClassifier().train_teams(frame, dets, Config()) is False
 
     def test_predict_team_before_training_returns_zero(self, synthetic_frame):
         tc = TeamClassifier()
