@@ -64,12 +64,26 @@ def analyze(
     if not video.exists():
         typer.echo(f"Error: video file not found: {video}", err=True)
         raise typer.Exit(1)
+    if not video.is_file():
+        typer.echo(f"Error: not a file: {video}", err=True)
+        raise typer.Exit(1)
     if video.suffix.lower() not in {".mp4", ".mov", ".avi", ".mkv"}:
         typer.echo(f"Warning: unexpected file extension '{video.suffix}'. Continuing.", err=True)
 
-    from pivotiq.config import PivotIQConfig
+    from pivotiq.config import DEVICES, ConfigError, PivotIQConfig
 
-    cfg = PivotIQConfig.from_toml(config_file) if config_file else PivotIQConfig.default()
+    if device not in DEVICES:
+        typer.echo(f"Error: --device must be one of {', '.join(DEVICES)}, got '{device}'", err=True)
+        raise typer.Exit(2)
+    if max_frames is not None and max_frames < 1:
+        typer.echo(f"Error: --max-frames must be >= 1, got {max_frames}", err=True)
+        raise typer.Exit(2)
+
+    try:
+        cfg = PivotIQConfig.from_toml(config_file) if config_file else PivotIQConfig.default()
+    except ConfigError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(2) from exc
     if device != "auto":
         cfg.detection.device = device
 
