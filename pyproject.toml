@@ -50,6 +50,9 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib"
+# Always import this tree's src/, even if another checkout (e.g. IAFS) is pip-installed editable.
+pythonpath = ["src"]
+testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 110

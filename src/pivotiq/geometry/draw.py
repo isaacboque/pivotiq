@@ -14,7 +14,6 @@ from typing import Optional, Sequence
 
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
-import numpy as np
 from matplotlib.figure import Figure
 
 from .pitch import (
@@ -24,7 +23,6 @@ from .pitch import (
     GOAL_POST_Y1,
     GOAL_POST_Y2,
     HALF_LENGTH,
-    HALF_WIDTH,
     KEYPOINTS,
     PITCH_LENGTH_M,
     PITCH_WIDTH_M,

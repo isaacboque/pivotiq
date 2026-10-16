@@ -120,10 +120,14 @@ varied pan and zoom. More detail in `docs/TRAINING.md`.
 ## Tests
 
 ```bash
-pytest tests/pivotiq -v
+pip install -e ".[dev]"
+pytest tests/pivotiq -v    # PivotIQ package only
+pytest                     # everything, including the legacy futsal_analytics tests
 ```
 
-70 unit tests cover the data models, pitch geometry and CLI.
+The `tests/pivotiq` suite (145 tests) covers the data models, config validation, pitch geometry,
+homography edge cases and the CLI; none of it needs a GPU, weights or video. The rest of `tests/`
+covers the legacy `futsal_analytics` package that still lives in `src/`.
 
 ## License
 
