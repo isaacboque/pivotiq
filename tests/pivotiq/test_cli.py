@@ -21,7 +21,7 @@ class TestHelp:
         result = runner.invoke(app, ["analyze", "--help"])
         assert result.exit_code == 0
         # Typer forces Rich colour under GITHUB_ACTIONS, splitting "--flag" with ANSI codes.
-        output = re.sub(r"\[[0-9;]*m", "", result.output)
+        output = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
         for flag in ("--ball-weights", "--keypoint-weights", "--out-video", "--report-dir"):
             assert flag in output
 
