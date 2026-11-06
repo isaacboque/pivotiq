@@ -45,3 +45,6 @@ _source.*
 # OS
 .DS_Store
 Thumbs.db
+
+# Ultralytics label caches embed absolute local paths
+futsal_dataset/**/labels.cache
