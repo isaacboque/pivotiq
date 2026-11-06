@@ -22,6 +22,9 @@ from futsal_analytics.field import FieldValidator, SimpleFieldMapper
 
 logger = logging.getLogger(__name__)
 
+# Minimum summed feature variance across visible players for K-Means to be worth fitting.
+MIN_FEATURE_SPREAD = 0.06
+
 
 # ---------------------------------------------------------------------------
 # Team Classifier
@@ -56,23 +59,31 @@ class TeamClassifier:
         return frame[y1:y2, x1:x2]
 
     def get_jersey_color_features(self, frame: np.ndarray, bbox: np.ndarray) -> np.ndarray:
-        """Extract a 3-element HSV feature vector from the upper portion of a bounding box."""
+        """Extract a 4-element feature vector [sin_H, cos_H, S, V] from the upper portion of a bounding box.
+
+        Hue is encoded as (sin, cos) to avoid the red-jersey wraparound problem:
+        in OpenCV HSV, red spans H≈0 and H≈180, so a plain mean of H values for
+        red pixels can land near 90 (green), breaking K-Means clustering.
+        """
         x1, y1, x2, y2 = map(int, bbox)
         jersey_h = int((y2 - y1) * 0.4)
         crop = self._safe_crop(frame, x1, y1, x2, y1 + jersey_h)
 
         if crop.size == 0:
-            return np.array([0, 0, 0], dtype=np.float32)
+            return np.zeros(4, dtype=np.float32)
 
         hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV).astype(np.float32)
         sat_mask = hsv[:, :, 1] > 30
+        pixels = hsv[sat_mask] if sat_mask.sum() >= 5 else hsv.reshape(-1, 3)
 
-        if sat_mask.sum() < 5:
-            return np.mean(hsv, axis=(0, 1)).astype(np.float32)
-
-        features = np.mean(hsv[sat_mask], axis=0).astype(np.float32)
-        features[0] = np.clip(features[0], 0, 180)
-        return features
+        hue_rad = pixels[:, 0] * (np.pi / 90.0)  # H ∈ [0,180] → angle ∈ [0, 2π]
+        # S and V are scaled to [0, 1] so they weigh the same as sin/cos(H) in
+        # K-Means; raw 0-255 values made hue irrelevant to the clustering.
+        return np.array(
+            [np.mean(np.sin(hue_rad)), np.mean(np.cos(hue_rad)),
+             np.mean(pixels[:, 1]) / 255.0, np.mean(pixels[:, 2]) / 255.0],
+            dtype=np.float32,
+        )
 
     def train_teams(self, frame: np.ndarray, detections: Any, config: Config) -> bool:
         """Fit K-Means on jersey colours of the currently visible players."""
@@ -85,9 +96,14 @@ class TeamClassifier:
                 dtype=np.float32,
             )
 
-            hue_var = float(np.var(features[:, 0]))
-            if hue_var < 50:
-                logger.warning("[TRAIN] Insufficient colour variance (hue var=%.1f)", hue_var)
+            # Total spread of the (scaled) feature vectors. The old gate was
+            # `var(features[:, 0]) < 50`, written when column 0 was raw hue in 0-180; on a
+            # sin-mean in [-1, 1] it is always below 50, so K-Means never trained. 0.06 is the
+            # same cut-off in angle terms (std of ~7 hue units = 0.25 rad -> var ~ 0.06); S and V
+            # count too, so white-vs-black kits (no usable hue) still pass.
+            spread = float(np.var(features, axis=0).sum())
+            if spread < MIN_FEATURE_SPREAD:
+                logger.warning("[TRAIN] Insufficient colour variance (spread=%.3f)", spread)
                 return False
 
             # Fresh KMeans instance each time to avoid sklearn warm-start side effects

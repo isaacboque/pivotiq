@@ -36,6 +36,8 @@ calibration_points.npy
 # Analyser output directories + their live artefacts
 out/
 out_*/
+# Ultralytics training runs (curves, batches, weights)
+runs/
 _live_*.jpg
 _source.*
 .run.lock
