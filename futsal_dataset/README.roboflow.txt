@@ -1,5 +1,5 @@
 
-futsal analytics - vdataset isaacs-workspace-ayzhf
+futsal analytics - dataset
 ==============================
 
 This dataset was exported via roboflow.com on May 27, 2026 at 11:16 PM GMT

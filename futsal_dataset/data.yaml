@@ -1,4 +1,4 @@
-path: C:\Users\isboq\OneDrive\Escriptori\IAFS\futsal_dataset
+path: /path/to/your/futsal_dataset
 train: train/images
 val: train/images
 test: train/images
@@ -6,9 +6,3 @@ test: train/images
 nc: 2
 names: ['players blue shirt', 'players red shirt']
 
-roboflow:
-  workspace: isaacs-workspace-ayzhf
-  project: isaacs-workspace-ayzhf
-  version: dataset
-  license: Private
-  url: https://app.roboflow.com/isaacs-workspace-ayzhf/isaacs-workspace-ayzhf/dataset

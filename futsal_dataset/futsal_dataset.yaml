@@ -1,5 +1,5 @@
 # futsal_dataset - Auto-generated YOLO config
-path: C:\Users\isboq\OneDrive\Escriptori\IAFS\futsal_dataset
+path: /path/to/your/futsal_dataset
 train: images/train
 val: images/val
 
